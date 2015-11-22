@@ -1,0 +1,146 @@
+---
+title: "Project Report - Practical Machine Learning"
+author: "Vijay Anand"
+date: "November 21, 2015"
+output: html_document
+---
+
+##Introduction
+The goal of this project is to predict the manner in which they did the exercise. 
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+The training data for this project are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+###Getting and Cleaning Data
+```{r,echo=TRUE}
+##Load all neceassary Library.
+set.seed(55555)
+library(caret)
+library(kernlab)
+library(knitr)
+library(rpart)
+library(rpart.plot)
+library(RColorBrewer)
+library(randomForest)
+library(e1071)
+
+
+##Training and Testing data
+trainURL<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testURL<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+```
+
+Download the testing and training data and read those files.
+```{r,echo=TRUE}
+Training <- read.csv(url(trainURL), na.strings=c("NA","#DIV/0!",""))
+dim(Training)
+Testing <- read.csv(url(testURL), na.strings=c("NA","#DIV/0!",""))
+dim(Testing)
+```
+
+This training dataset can be partioned into two types, one further as Training1 and Testing1 set.
+```{r,echo=TRUE}
+Partition_Training<-createDataPartition(Training$classe,p=0.6,list=FALSE)
+Training1<-Training[Partition_Training,]
+dim(Training1)
+Testing1<-Training[-Partition_Training,]
+dim(Testing1)
+```
+Cleaning the data can be done by using the NONZeroVariance function.By running this function in the new dataset Training1 will give you the dataset without NZV.
+
+```{r,echo=TRUE}
+#clearing NZV for Training1 dataset
+Training1_NZV<-nearZeroVar(Training1,saveMetrics = TRUE)
+Training1<-Training1[,Training1_NZV$nzv==FALSE]
+dim(Training1)
+
+#clearing NZV for Testing1 dataset
+Testing_NZV<-nearZeroVar(Testing1,saveMetrics = TRUE)
+Testing1<-Testing1[,Testing_NZV$nzv==FALSE]
+dim(Testing1)
+
+```
+Remove the First variable and clean variables with multiple NA.
+```{r,echo=TRUE}
+Training1<-Training1[c(-1)]
+Training2<-Training1
+
+for(i in 1:length(Training1))
+{
+        if(sum(is.na(Training1[,i]))/nrow(Training1)>=.6)
+        {
+                for(j in 1:length(Training2))
+                {
+                        if(length(grep(names(Training1[i]),names(Training2)[j]))==1)
+                        {
+                                Training2<-Training2[,-j]
+                        }
+                }
+        }
+}
+
+Training1<-Training2
+
+clean1 <- colnames(Training1)
+##58 th column is classe and it will be removed
+clean2 <- colnames(Training1[, -58]) 
+Testing1 <- Testing1[clean1]          
+Testing <- Testing[clean2]
+
+dim(Testing1)
+```
+Coerce the data into same type is necessary during the use of various algorithms.
+
+```{r,echo=TRUE}
+for (i in 1:length(Testing) ) {
+        for(j in 1:length(Training1)) {
+        if( length( grep(names(Training1[i]), names(Testing)[j]) ) ==1)  {
+            class(Testing[j]) <- class(Training1[i])
+        }      
+    }      
+}
+#And to make sure Coertion really worked, simple smart ass technique:
+Testing <- rbind(Training1[2, -58] , Testing) #note row 2 does not mean anything, this will be removed right.. now:
+Testing <- Testing[-1,]
+dim(Testing)
+```
+
+##Machine Learning Algorithms : Random Forest
+```{r,echo=TRUE}
+RandomSet <- randomForest(classe ~ ., data=Training1)
+prediction <- predict(RandomSet, Testing1, type = "class")
+ConfusionPrediction <- confusionMatrix(prediction, Testing1$classe)
+ConfusionPrediction
+```
+##Machine Learning Algorithm: Decision Tree
+```{r,echo=TRUE}
+DecisionTree <- rpart(classe ~ ., data=Training1, method="class")
+#prp(DecisionTree)
+rpart.plot(DecisionTree,main="TREE",extra = 102,under=TRUE,faclen = 0)
+```
+
+##Prediction Assignment Submission
+```{r,echo=TRUE}
+prediction <- predict(RandomSet, Testing, type = "class")
+prediction
+```
+
+Function which will be used to submit the predictions for submission.
+```{r,echo=TRUE}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(prediction)
+```
+
